@@ -1,0 +1,422 @@
+---
+# tasks file for generate_ignition
+
+- name: Remove existing ignition configs
+  file:
+    path: "{{ ignition_configs }}"
+    state: absent
+
+- name: Create ignition configs directory
+  file:
+    path: "{{ ignition_configs }}"
+    state: directory
+    mode: '0755'
+
+- name: Create path for SSH Keys
+  file:
+    path: "{{ ssh_key_file | dirname }}"
+    state: directory
+    mode: 0700
+
+# TODO: get public key from the return of this task.
+#       not sure if it works even when the key already exists
+- name: Generate SSH keypair for cluster nodes
+  community.crypto.openssh_keypair:
+   path: "{{ ssh_key_file }}"
+   size: 4096
+   type: rsa
+   force: false
+   state: present
+
+- name: Fetch public key
+  slurp:
+    src: '{{ ssh_key_file }}.pub'
+  register: slurped_key_b64
+
+# TODO: This tasks doesn't work very well
+#- name: Configure SSH client for cluster node access
+#  lineinfile:
+#    path: "{{ ansible_env.HOME }}/.ssh/config"
+#    line: "{{ item.line }}"
+#    state: present
+#    backup: yes
+#    create: yes
+#    mode: 0600
+#  with_items:
+#    - { line: "Host *" }
+#    - { line: "    HostName %h.{{ ocp_cluster_name }}.{{ ocp_base_domain }}" }
+#    - { line: "    User core" }
+#    - { line: "    IdentityFile {{ ansible_env.HOME }}/.ssh/{{ ocp_cluster_name }}_rsa" }
+
+- name: Fetch pull secret
+  slurp:
+    src: "{{ pull_secret }}"
+  register: slurped_pull_secret_b64
+
+- name: Slurp Mirror Registry Certificate Bundle
+  slurp:
+    src: "{{ certificate_bundle }}"
+  register: slurped_registry_ca_bundle_b64
+  when: ( private_registry | bool )
+
+- name: Slurp private AWS region API CA
+  slurp:
+    src: 'roles/generate_ignition/files/aws_api_ca_bundle.pem'
+  register: slurped_aws_api_ca_bundle_64
+  when:
+    - (platform is match("aws"))
+    - ( not combine | bool )
+
+- name: Slurp private AWS region API CA (Combine)
+  slurp:
+    src: 'roles/generate_ignition/files/combine_ca_bundle.pem'
+  register: slurped_aws_api_ca_bundle_64
+  when:
+    - (platform is match("aws"))
+    - ( combine | bool )
+
+- name: Pull in vpc cloudformation facts
+  import_role:
+    name: deploy_cluster
+    tasks_from: vpc_facts.yml
+  when:
+    - (cloudformation_based | bool)
+
+- name: Pull in infra cloudformation facts
+  import_role:
+    name: deploy_cluster
+    tasks_from: infra_facts.yml
+  when:
+    - (cloudformation_based | bool)
+
+- name: Pull in security cloudformation facts
+  import_role:
+    name: deploy_cluster
+    tasks_from: security_facts.yml
+  when:
+    - (cloudformation_based | bool)
+
+- name: Copy template install-config.yaml
+  template:
+    src: install-config.yaml.j2
+    dest: "{{ ignition_configs }}/install-config.yaml"
+    mode: 0664
+
+- name: Ensure proper spacing of additionalTrustBundle
+  shell: awk 'BEGIN{c=0}  /BEGIN CERTIFICATE/{c=1}  {if (c==1) print " ",$0}  {if (c==0) print $0}  /END CERTIFICATE/{c=0}' '{{ ignition_configs }}/install-config.yaml'
+  register: install_config_spaced
+
+- name: Replace install-config with correctly spaced install-config
+  copy:
+    content: "{{ install_config_spaced.stdout }}"
+    dest: '{{ ignition_configs }}/install-config.yaml'
+    force: true
+
+- name: Remove existing install-config.yaml save
+  file:
+    path: '{{ mirror_base }}/{{ ocp_cluster_name }}-install-config.yaml'
+    state: absent
+
+- name: Save install-config.yaml
+  copy:
+    src: "{{ ignition_configs }}/install-config.yaml"
+    dest: '{{ mirror_base }}/{{ ocp_cluster_name }}-install-config.yaml'
+    remote_src: true
+
+- name: Create manifests
+  shell: "{{ openshift_install }} create manifests --dir={{ ignition_configs }}"
+
+#- name: Stop after creating manifests
+#  fail:
+#    msg: "Stop after creating manifests"
+
+- name: Set masters to unschedulable
+  replace:
+    path: "{{ ignition_configs }}/manifests/cluster-scheduler-02-config.yml"
+    regexp: 'mastersSchedulable: true'
+    replace: 'mastersSchedulable: false'
+
+# TODO: This might not be needed anymore
+#- name: Set cluster upgrade channel
+#  replace:
+#    path: "{{ ignition_configs }}/manifests/cvo-overrides.yaml"
+#    regexp: 'channel:.*'
+#    replace: 'channel: {{ cluster_channel }}'
+
+# TODO: This might not be needed anymore, check the OSUS operator
+# Prevent the cluster from trying to reach the Cincinnati for update graphs
+#- name: Set dummy Cincinnati server
+#  replace:
+#    path: "{{ ignition_configs }}/manifests/cvo-overrides.yaml"
+#    regexp: 'upstream:.*'
+#    replace: 'upstream: http://localhost:8080/graph'
+
+# There's a BZ to fix this coming in something like 4.12
+- name: Remove default cloud provider config
+  file:
+    path: "{{ ignition_configs }}/manifests/cloud-provider-config.yaml"
+    state: absent
+  when:
+    - (platform is match("aws"))
+    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+
+- name: Copy new cloud provider config
+  template:
+    src: cloud-provider-config.yaml.j2
+    dest: "{{ ignition_configs }}/manifests/cloud-provider-config.yaml"
+    mode: 0644
+  when:
+    - (platform is match("aws"))
+    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+
+- name: Set access key fact
+  set_fact:
+    aws_access_key_id: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+  when:
+    - (platform is match("aws"))
+
+- name: Set secret access key fact
+  set_fact:
+    aws_secret_access_key_id: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+  when:
+    - (platform is match("aws"))
+
+- name: Set session token fact
+  set_fact:
+    aws_session_token: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
+  when:
+    - (platform is match("aws"))
+    - (ansible_env.AWS_SESSION_TOKEN is defined)
+
+- name: Remove existing cloud credentials config
+  file:
+    path: "{{ ignition_configs }}/openshift/{{ item }}"
+    state: absent
+  when:
+    - (platform is match("aws"))
+    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+  with_items:
+    - '99_cloud-creds-secret.yaml'
+    - '99_aws-ebs-csi-driver-operator-secret.yaml'
+    - '99_cloud-credential-operator-iam-ro-secret.yaml'
+    - '99_openshift-image-registry-secret.yaml'
+    - '99_openshift-ingress-secret.yaml'
+    - '99_openshift-machine-api-aws-secret.yaml'
+
+- name: Add STS AWS API cloud credentials config
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ ignition_configs }}/openshift/{{ item }}"
+    mode: 0644
+  when:
+    - (platform is match("aws"))
+    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+  with_items:
+    - '99_cloud-creds-secret.yaml'
+    - '99_aws-ebs-csi-driver-operator-secret.yaml'
+    - '99_cloud-credential-operator-iam-ro-secret.yaml'
+    - '99_openshift-image-registry-secret.yaml'
+    - '99_openshift-ingress-secret.yaml'
+    - '99_openshift-machine-api-aws-secret.yaml'
+
+- name: Remove DNS operator config
+  file:
+    path: "{{ ignition_configs }}/manifests/cluster-dns-02-config.yml"
+    state: absent
+  when:
+    - (platform is match("aws") and (not route53_enabled | bool))
+
+- name: Add custom DNS operator config
+  template:
+    src: cluster-dns-02-config.yml.j2
+    dest: "{{ ignition_configs }}/manifests/cluster-dns-02-config.yml"
+    mode: 0644
+  when:
+    - (platform is match("aws") and (not route53_enabled | bool))
+
+#- name: Add Combine Metadata interceptor for master nodes
+#  template:
+#    src: c2s-instance-metadata-machineconfig.yaml.j2
+#    dest: "{{ ignition_configs }}/manifests/c2s-instance-metadata-master-machineconfig.yaml"
+#    mode: 0644
+#  vars:
+#    node_role: 'master'
+#  when: ( combine | bool )
+
+#- name: Add Combine Metadata interceptor for worker nodes
+#  template:
+#    src: c2s-instance-metadata-machineconfig.yaml.j2
+#    dest: "{{ ignition_configs }}/manifests/c2s-instance-metadata-worker-machineconfig.yaml"
+#    mode: 0644
+#  vars:
+#    node_role: 'worker'
+#  when: ( combine | bool )
+
+- name: Slurp json state
+  shell: grep -A 2 'ClusterID' {{ ignition_configs }}/.openshift_install_state.json | grep InfraID | awk '{print $2}' | tr -d '"'
+  register: cluster_state
+
+- name: Set cluster infra name
+  set_fact:
+    random_infra_id: '{{ cluster_state.stdout }}'
+
+- name: Show infra name
+  debug:
+    var: random_infra_id
+
+- name: Change random infrastructure name to configured name
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{ random_infra_id }}"
+    replace: "{{ infrastructure_id }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+    - '{{ ignition_configs }}/.openshift*'
+
+- name: Change worker iam profile name
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-worker-profile"
+    replace: "{{ ec2_instance_profile.worker }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+  when:
+    - ec2_iam_role.worker is defined
+
+- name: Change master iam profile name
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-master-profile"
+    replace: "{{ ec2_instance_profile.master }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+  when: 
+    - ec2_iam_role.master is defined
+
+- name: Change master security group from the default pattern
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-master-sg"
+    replace: "{{ ec2_sg.master.name }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+- name: Change the worker security group from the default pattern
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-worker-sg"
+    replace: "{{ ec2_sg.worker.name }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+#- name: Change master machine set internal LB name
+#  ansible.builtin.replace:
+#    path: "{{ item }}"
+#    regexp: "{{infrastructure_id}}-int"
+#    replace: "{{infrastructure_id}}-int"
+#  with_fileglob:
+#    - '{{ ignition_configs }}/manifests/*.y*ml'
+#    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+#- name: Change master machine set internal LB name
+#  ansible.builtin.replace:
+#    path: "{{ item }}"
+#    regexp: "{{infrastructure_id}}-ext"
+#    replace: "{{infrastructure_id}}-ext"
+#  with_fileglob:
+#    - '{{ ignition_configs }}/manifests/*.y*ml'
+#    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+- name: Change private subnet 0 name
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-private-{{private_subnets[0].zone}}"
+    replace: "{{ private_subnets[0].name }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+- name: Change private subnet 1 name
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-private-{{private_subnets[1].zone}}"
+    replace: "{{ private_subnets[1].name }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+- name: Change private subnet 2 name
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{infrastructure_id}}-private-{{private_subnets[2].zone}}"
+    replace: "{{ private_subnets[2].name }}"
+  with_fileglob:
+    - '{{ ignition_configs }}/manifests/*.y*ml'
+    - '{{ ignition_configs }}/openshift/*.y*ml'
+
+#- name: Remove default Ingress Controller config
+#  file:
+#    path: "{{ ignition_configs }}/manifests/cluster-ingress-default-ingresscontroller.yaml"
+#    state: absent
+
+#- name: Configure Ingress Controller for HostNetwork
+#  template:
+#    src: cluster-ingress-default-ingresscontroller-hostnetwork.yaml.j2
+#    dest: "{{ ignition_configs }}/manifests/cluster-ingress-default-ingresscontroller.yaml"
+#    mode: 0644
+
+#- name: Configure Ingress Controller for Classic Load Balancer
+#  template:
+#    src: cluster-ingress-default-ingresscontroller-classic.yaml.j2
+#    dest: "{{ ignition_configs }}/manifests/cluster-ingress-default-ingresscontroller.yaml"
+#    mode: 0644
+
+#- name: Configure Ingress Controller for Network Load Balancer
+#  template:
+#    src: cluster-ingress-default-ingresscontroller-nlb.yaml.j2
+#    dest: "{{ ignition_configs }}/manifests/cluster-ingress-default-ingresscontroller.yaml"
+#    mode: 0644
+
+- name: Remove default cluster network config
+  file:
+    path: "{{ ignition_configs }}/manifests/cluster-network-03-config.yml"
+    state: absent
+  when:
+    - (platform is match("aws") and ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+
+- name: Customize custom cluster network policy
+  template:
+    src: cluster-network-03-config.yml.j2
+    dest: "{{ ignition_configs }}/manifests/cluster-network-03-config.yml"
+    mode: 0644
+  when:
+    - (platform is match("aws") and ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+
+- name: Stop before generating ignition configs
+  fail:
+    msg: "Stop before generating ignition configs"
+
+- name: Create ignition configs
+  shell: "{{ openshift_install }} create ignition-configs --dir={{ ignition_configs }}"
+
+- name: Create kube config location
+  file:
+    path: "{{ kubeconfig | dirname }}"
+    state: directory
+    mode: '0755'
+
+- name: Remove existing kube config
+  file:
+    path: "{{ kubeconfig }}"
+    state: absent
+
+- name: Set kube config
+  copy:
+    src: "{{ ignition_configs }}/auth/kubeconfig"
+    dest: "{{ kubeconfig }}"
+    remote_src: true

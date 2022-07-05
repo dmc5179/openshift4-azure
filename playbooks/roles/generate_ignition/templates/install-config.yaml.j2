@@ -1,0 +1,92 @@
+---
+apiVersion: v1
+baseDomain: "{{ ocp_base_domain }}"
+{% if platform == 'aws' and credentials_mode is defined %}
+credentialsMode: "{{ credentials_mode }}"
+{% endif %}
+compute:
+- hyperthreading: Enabled
+  name: worker
+  replicas: {{ worker_count }}
+{% if platform == 'aws' %}
+  platform:
+    aws:
+      type: "{{ ec2_instance_type.worker }}"
+{% endif %}
+controlPlane:
+  hyperthreading: Enabled
+  name: master
+  replicas: {{ master_count }}
+{% if platform == 'aws' %}
+  platform:
+    aws:
+      type: "{{ ec2_instance_type.master }}"
+{% endif %}
+metadata:
+  name: "{{ ocp_cluster_name }}"
+networking:
+  clusterNetwork:
+  - cidr: "{{ cluster_network_cidr }}"
+    hostPrefix: {{ cluster_network_prefix }}
+  networkType: "{{ ocp_sdn }}"
+  machineNetwork:
+  - cidr: "{{ machine_network_cidr }}"
+  serviceNetwork:
+  - "{{ service_network_cidr }}"
+platform:
+{% if platform == 'aws' %}
+  aws:
+    region: '{{ ansible_env.AWS_DEFAULT_REGION }}'
+{% if ansible_env.AWS_DEFAULT_REGION == 'us-iso-east-1' %}
+    amiID: "{{ rhcos_ami[ rhcos_ver ] }}"
+    serviceEndpoints:
+      - name: "ec2"
+        url: 'https://ec2.us-iso-east-1.c2s.ic.gov'
+      - name: "s3"
+        url: 'https://s3.us-iso-east-1.c2s.ic.gov'
+      - name: "elb/"
+        url: 'https://elasticloadbalancing.us-iso-east-1.c2s.ic.gov'
+      - name: "iam"
+        url: 'https://iam.us-iso-east-1.c2s.ic.gov'
+      - name: "route53"
+        url: 'https://route53.us-iso-east-1.c2s.ic.gov'
+      - name: "tagging"
+        url: 'https://tagging.us-iso-east-1.c2s.ic.gov'
+      - name: "sts"
+        url: 'https://sts.us-iso-east-1.c2s.ic.gov'
+{% endif %}
+    userTags:
+      CLAP_OFF: "NEVER"
+      CLAP_ON: "NEVER"
+    subnets:
+    - {{ private_subnets[0].id }}
+    - {{ private_subnets[1].id }}
+    - {{ private_subnets[2].id }}
+    - {{ public_subnets[0].id }}
+    - {{ public_subnets[1].id }}
+    - {{ public_subnets[2].id }}
+{% else %}
+  none: {}
+{% endif %}
+pullSecret: '{{ slurped_pull_secret_b64.content | b64decode | trim }}'
+sshKey: '{{ slurped_key_b64.content | b64decode | trim }}'
+fips: {{ fips_enabled | bool | lower }}
+publish: "{{ ocp_cluster_publish }}"
+{% if private_registry %}
+additionalTrustBundle: |
+{% if private_registry %}
+{{ slurped_registry_ca_bundle_b64.content | b64decode | trim }}
+{% endif %}
+{% endif %}
+{% if private_registry %}
+imageContentSources:
+- mirrors:
+  - {{ mirror_registry }}:{{ mirror_registry_port }}/ocp4/openshift4
+  source: quay.io/openshift-release-dev/ocp-release
+- mirrors:
+  - {{ mirror_registry }}:{{ mirror_registry_port }}/ocp4/openshift4
+  source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+- mirrors:
+  - {{ mirror_registry }}:{{ mirror_registry_port }}/ocp4/openshift4
+  source: quay.io/openshift-release-dev/ocp-release-nightly
+{% endif %}
