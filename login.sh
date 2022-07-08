@@ -1,5 +1,7 @@
 #!/bin/bash -xe
 
+RESOURCE_GROUP="openshift"
+
 #usgovtexas (US Gov Texas)
 #usgovvirginia (US Gov Virginia)
 
@@ -9,11 +11,9 @@ az cloud set --name AzureCloud
 az account set --subscription "Azure subscription 1"
 az account show
 
-#homeTenantId 9e4789ac-343d-499c-9991-809c995d1dcb
 OCP_TENANT_ID=$(az account show --query tenantId -o tsv)
 echo $OCP_TENANT_ID
 
-#id: db940a9e-78f4-4739-8e15-cfe15c7bb7d6
 OCP_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 echo $OCP_SUBSCRIPTION_ID
 
