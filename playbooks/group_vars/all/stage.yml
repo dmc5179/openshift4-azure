@@ -1,0 +1,7 @@
+---
+
+s3_staging: true
+s3_bucket: 'redhat-dan'
+s3_path: 'ignition'
+
+httpd_staging: false

@@ -1,0 +1,50 @@
+---
+apiVersion: v1
+baseDomain: "{{ ocp_base_domain }}"
+compute:
+- hyperthreading: Enabled
+  name: worker
+  replicas: 3
+  platform:
+    azure:
+      type: Standard_D2s_v3
+      osDisk:
+        diskSizeGB: 512
+        diskType: Standard_LRS
+controlPlane:
+  hyperthreading: Enabled
+  name: master
+  replicas: 3
+  platform:
+    azure:
+      type: Standard_D8s_v3
+      osDisk:
+        diskSizeGB: 1024 
+        diskType: Premium_LRS
+metadata:
+  name: "{{ ocp_cluster_name }}"
+networking:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  machineNetwork:
+  - cidr: 10.0.0.0/16
+  networkType: OpenShiftSDN
+  serviceNetwork:
+  - 172.30.0.0/16
+platform:
+  azure:
+    baseDomainResourceGroupName: resource_group 
+    region: centralus 
+    resourceGroupName: existing_resource_group 
+    outboundType: Loadbalancer
+    cloudName: AzurePublicCloud
+    #  azure:
+    #baseDomainResourceGroupName: openshift
+    #cloudName: AzurePublicCloud
+    #outboundType: Loadbalancer
+    #region: eastus
+pullSecret: '{{ slurped_pull_secret_b64.content | b64decode | trim }}'
+sshKey: '{{ slurped_key_b64.content | b64decode | trim }}'
+fips: false
+publish: External

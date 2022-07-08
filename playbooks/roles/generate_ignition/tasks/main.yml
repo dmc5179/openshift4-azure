@@ -75,26 +75,26 @@
     - (platform is match("aws"))
     - ( combine | bool )
 
-- name: Pull in vpc cloudformation facts
-  import_role:
-    name: deploy_cluster
-    tasks_from: vpc_facts.yml
-  when:
-    - (cloudformation_based | bool)
+#- name: Pull in vpc cloudformation facts
+#  import_role:
+#    name: deploy_cluster
+#    tasks_from: vpc_facts.yml
+#  when:
+#    - (cloudformation_based | bool)
 
-- name: Pull in infra cloudformation facts
-  import_role:
-    name: deploy_cluster
-    tasks_from: infra_facts.yml
-  when:
-    - (cloudformation_based | bool)
+#- name: Pull in infra cloudformation facts
+#  import_role:
+#    name: deploy_cluster
+#    tasks_from: infra_facts.yml
+#  when:
+#    - (cloudformation_based | bool)
 
-- name: Pull in security cloudformation facts
-  import_role:
-    name: deploy_cluster
-    tasks_from: security_facts.yml
-  when:
-    - (cloudformation_based | bool)
+#- name: Pull in security cloudformation facts
+#  import_role:
+#    name: deploy_cluster
+#    tasks_from: security_facts.yml
+#  when:
+#    - (cloudformation_based | bool)
 
 - name: Copy template install-config.yaml
   template:
@@ -126,9 +126,9 @@
 - name: Create manifests
   shell: "{{ openshift_install }} create manifests --dir={{ ignition_configs }}"
 
-#- name: Stop after creating manifests
-#  fail:
-#    msg: "Stop after creating manifests"
+- name: Stop after creating manifests
+  fail:
+    msg: "Stop after creating manifests"
 
 - name: Set masters to unschedulable
   replace:
@@ -169,70 +169,70 @@
     - (platform is match("aws"))
     - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
 
-- name: Set access key fact
-  set_fact:
-    aws_access_key_id: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
-  when:
-    - (platform is match("aws"))
+#- name: Set access key fact
+#  set_fact:
+#    aws_access_key_id: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+#  when:
+#    - (platform is match("aws"))
 
-- name: Set secret access key fact
-  set_fact:
-    aws_secret_access_key_id: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
-  when:
-    - (platform is match("aws"))
+#- name: Set secret access key fact
+#  set_fact:
+#    aws_secret_access_key_id: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+#  when:
+#    - (platform is match("aws"))
 
-- name: Set session token fact
-  set_fact:
-    aws_session_token: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
-  when:
-    - (platform is match("aws"))
-    - (ansible_env.AWS_SESSION_TOKEN is defined)
+#- name: Set session token fact
+#  set_fact:
+#    aws_session_token: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
+#  when:
+#    - (platform is match("aws"))
+#    - (ansible_env.AWS_SESSION_TOKEN is defined)
 
-- name: Remove existing cloud credentials config
-  file:
-    path: "{{ ignition_configs }}/openshift/{{ item }}"
-    state: absent
-  when:
-    - (platform is match("aws"))
-    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
-  with_items:
-    - '99_cloud-creds-secret.yaml'
-    - '99_aws-ebs-csi-driver-operator-secret.yaml'
-    - '99_cloud-credential-operator-iam-ro-secret.yaml'
-    - '99_openshift-image-registry-secret.yaml'
-    - '99_openshift-ingress-secret.yaml'
-    - '99_openshift-machine-api-aws-secret.yaml'
+#- name: Remove existing cloud credentials config
+#  file:
+#    path: "{{ ignition_configs }}/openshift/{{ item }}"
+#    state: absent
+#  when:
+#    - (platform is match("aws"))
+#    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+#  with_items:
+#    - '99_cloud-creds-secret.yaml'
+#    - '99_aws-ebs-csi-driver-operator-secret.yaml'
+#    - '99_cloud-credential-operator-iam-ro-secret.yaml'
+#    - '99_openshift-image-registry-secret.yaml'
+#    - '99_openshift-ingress-secret.yaml'
+#    - '99_openshift-machine-api-aws-secret.yaml'
 
-- name: Add STS AWS API cloud credentials config
-  template:
-    src: "{{ item }}.j2"
-    dest: "{{ ignition_configs }}/openshift/{{ item }}"
-    mode: 0644
-  when:
-    - (platform is match("aws"))
-    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
-  with_items:
-    - '99_cloud-creds-secret.yaml'
-    - '99_aws-ebs-csi-driver-operator-secret.yaml'
-    - '99_cloud-credential-operator-iam-ro-secret.yaml'
-    - '99_openshift-image-registry-secret.yaml'
-    - '99_openshift-ingress-secret.yaml'
-    - '99_openshift-machine-api-aws-secret.yaml'
+#- name: Add STS AWS API cloud credentials config
+#  template:
+#    src: "{{ item }}.j2"
+#    dest: "{{ ignition_configs }}/openshift/{{ item }}"
+#    mode: 0644
+#  when:
+#    - (platform is match("aws"))
+#    - (ansible_env.AWS_DEFAULT_REGION is match("us-iso-east-1"))
+#  with_items:
+#    - '99_cloud-creds-secret.yaml'
+#    - '99_aws-ebs-csi-driver-operator-secret.yaml'
+#    - '99_cloud-credential-operator-iam-ro-secret.yaml'
+#    - '99_openshift-image-registry-secret.yaml'
+#    - '99_openshift-ingress-secret.yaml'
+#    - '99_openshift-machine-api-aws-secret.yaml'
 
-- name: Remove DNS operator config
-  file:
-    path: "{{ ignition_configs }}/manifests/cluster-dns-02-config.yml"
-    state: absent
-  when:
-    - (platform is match("aws") and (not route53_enabled | bool))
+#- name: Remove DNS operator config
+#  file:
+#    path: "{{ ignition_configs }}/manifests/cluster-dns-02-config.yml"
+#    state: absent
+#  when:
+#    - (platform is match("aws") and (not route53_enabled | bool))
 
-- name: Add custom DNS operator config
-  template:
-    src: cluster-dns-02-config.yml.j2
-    dest: "{{ ignition_configs }}/manifests/cluster-dns-02-config.yml"
-    mode: 0644
-  when:
-    - (platform is match("aws") and (not route53_enabled | bool))
+#- name: Add custom DNS operator config
+#  template:
+#    src: cluster-dns-02-config.yml.j2
+#    dest: "{{ ignition_configs }}/manifests/cluster-dns-02-config.yml"
+#    mode: 0644
+#  when:
+#    - (platform is match("aws") and (not route53_enabled | bool))
 
 #- name: Add Combine Metadata interceptor for master nodes
 #  template:

@@ -1,0 +1,70 @@
+---
+
+rhcos_ver: "4.10.18"
+ocp_ver: "4.10.18"
+arch: 'x86_64'
+
+openshift_install: 'openshift-install-{{ocp_ver}}'
+openshift_client: 'oc-{{ocp_ver}}'
+kubectl: 'kubectl-{{ocp_ver}}'
+kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+
+mirror_base: '/home/danclark/workspace/openshift4-azure/playbooks/install_dir'
+ignition_configs: '{{ mirror_base }}/cluster'
+pull_secret: '{{ mirror_base }}/pull-secret.txt'
+
+master_scheduleable: false
+cluster_channel: 'stable-{{ocp_ver:3}}'
+
+#ssh_key_file: '{{ ansible_env.HOME }}/.ssh/id_ed25519'
+ssh_key_file: "{{ mirror_base }}/ssh/id_rsa"
+
+ocp_base_domain: 'theredhatdan.com'
+ocp_cluster_name: 'caas'
+ocp_cluster_id: 'abc123'
+ocp_cluster_name_verbose: '{{ ocp_cluster_name}}.{{ ocp_base_domain }}'
+infrastructure_id: '{{ ocp_cluster_name }}-{{ ocp_cluster_id }}'
+ocp_sdn: 'OpenShiftSDN'
+# External is not yet supported by the custom Cloudformation templates in this repo
+ocp_cluster_publish: 'External'
+
+master_count: 3
+worker_count: 3
+
+private_registry: false
+mirror_registry: 'bastion.{{ ocp_base_domain }}'
+mirror_registry_port: 5000
+mirror_transport: 'https'
+fips_enabled: false
+
+certificate_bundle: '/etc/pki/ca-trust/source/anchors/registry.crt'
+
+platform: 'azure'
+
+cluster_network_cidr: '10.128.0.0/14'
+cluster_network_prefix: 23
+service_network_cidr: '172.30.0.0/16'
+machine_network_cidr: '10.0.0.0/16'
+mtu: 8500
+vxlanPort: 4789
+
+network_policy: 'NetworkPolicy'
+
+httpd_document_root: '/var/www/html'
+
+pip_cmd: 'pip3'
+pip_args: ''
+
+kube_ssl_enabled: false
+
+stage_ignition: true
+
+ign_ver:
+  '4.2': '2.1.0'
+  '4.3': '2.1.0'
+  '4.4': '2.1.0'
+  '4.5': '2.2.0'
+  '4.6': '3.1.0'
+  '4.7': '3.1.0'
+  '4.8': '3.1.0'
+  '4.9.0': '3.2.0'

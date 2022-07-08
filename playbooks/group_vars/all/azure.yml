@@ -1,0 +1,87 @@
+---
+
+# VPC variables
+#vpc_cidr: 10.0.0.0/16
+#az_count: 3
+#subnet_bits: 12
+##########################
+
+#subnets:
+#  - name: ''
+#    id: ''
+#    zone: ''
+#  - name: ''
+#    id: ''
+#    zone: ''
+#  - name: ''
+#    id: ''
+#    zone: ''
+
+rhcos_ami:
+  '4.6.8':  ''
+  '4.7.0':  ''
+  '4.7.7':  ''
+  '4.7.13': ''
+  '4.8.2': ''
+  '4.9.0': ''
+
+# TODO: Add custom Azure endpoints if needed
+azure_ssl_enabled: true
+
+#route53_enabled: true
+#hosted_zone_id: "Z0893321IBKAQZL1S8ZE"
+
+ec2_key_name: "danclark-personal"
+
+vpc_id: 'vpc-'
+
+# Set to true if the VPC and LBs were created with CF templates
+cloudformation_based: false
+
+# Only need to define these when NOT using the CF templates.
+internal_api_target_group_arn: ''
+internal_service_target_group_arn: ''
+external_api_target_group_arn: ''
+internal_lb_name:
+external_lb_name:
+
+instance_type:
+  bootstrap: "Standard_D8s_v3"
+  master: "Standard_D8s_v3"
+  worker: "Standard_D2s_v3"
+
+volume_type_root:
+  bootstrap: "Premium_LRS"
+  master: "Premium_LRS"
+  worker: "Standard_LRS"
+
+volume_size_root:
+  bootstrap: 1024
+  master: 1024
+  worker: 512
+
+#ec2_iam_role:
+#  bootstrap: "openshift4-boostrap-role"
+#  master: "openshift4-master-role"
+#  worker: "openshift4-worker-role"
+
+#ec2_sg:
+#  master:
+#    id: 'sg-'
+#    name: ''
+#  worker:
+#    id:
+#    name:
+
+######################################################
+# Cloudformation stack names
+# Generally do not need to be changed unless deploying
+# multiple clusters
+######################################################
+
+vpc_stack_name: "openshift4vpc"
+infra_stack_name: "openshift4infra"
+security_stack_name: "openshift4sec"
+bootstrap_stack_name: "openshift4bootstrap"
+cp_stack_name: "openshift4cp"
+workers_stack_name: "openshift4worker"

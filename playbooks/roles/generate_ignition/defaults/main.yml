@@ -132,7 +132,7 @@ disk: 'xvda'
 #s3_endpoint: 'https://s3.us-iso-east-1.c2s.ic.gov'
 #route53_endpoint: 'https://route53.us-iso-east-1.c2s.ic.gov'
 #elb_endpoint: 'https://elasticloadbalancing.us-iso-east-1.c2s.ic.gov'
-#aws_ssl_enabled: false
+#azure_ssl_enabled: false
 
 #combine: true
 
